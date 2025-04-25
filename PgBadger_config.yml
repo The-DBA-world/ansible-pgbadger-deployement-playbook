@@ -1,0 +1,36 @@
+---
+# pgBadger deployment configuration
+# Author: Anilkumar Sonawane
+# Date: 25/04/2025
+
+# PostgreSQL variables
+postgres_user: fapgss6283
+postgres_group: postgres
+postgres_version: "15"
+postgres_port: "15444"
+postgres_env: "prod"
+postgres_db: "mydb"
+
+# PostgreSQL directory variables
+pg_root_dir: "/data/{{ postgres_env }}/postgres/{{ postgres_version }}/{{ postgres_db }}"
+pg_data_dir: "{{ pg_root_dir }}/data"
+pg_log_dir: "{{ pg_root_dir }}/log"
+
+# pgBadger variables
+pgbadger_tar_file: "pgbadger-11.4.tar.gz"
+pgbadger_version: "11.4"
+pg_root_code_dir: "/code/{{ postgres_env }}/postgres/{{ postgres_version }}/{{ postgres_db }}"
+pgbadger_extract_dir: "{{ pg_root_code_dir }}"
+
+# PostgreSQL parameters for pgBadger
+pgbadger_postgres_params:
+  log_autovacuum_min_duration: 0
+  log_checkpoints: "on"
+  log_connections: "on"
+  log_disconnections: "on"
+  log_duration: "on"
+  log_lock_waits: "on"
+  log_temp_files: 0
+  log_statement: "all"
+  log_min_duration_statement: 0
+  log_line_prefix: "%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h"
