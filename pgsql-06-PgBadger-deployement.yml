@@ -1,0 +1,101 @@
+---
+# pgBadger deployment configuration
+# Author: Anilkumar Sonawane
+# Date: 25/04/2025
+
+- name: Deploy pgBadger on the server
+  hosts: "{{ target_server | default('all') }}"
+  become: yes
+
+  vars_files:
+    - "{{ playbook_dir }}/pgBadger_deployement/PgBadger_config.yml"
+
+  tasks:
+    - name: Update package cache for RHEL/CentOS
+      ansible.builtin.dnf:
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Install required packages (perl, perl-devel, make)
+      ansible.builtin.dnf:
+        name:
+          - perl
+          - perl-devel
+          - make
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Copy pgBadger tar file to remote server
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/pgBadger_deployement/files/{{ pgbadger_tar_file }}"
+        dest: "/tmp/{{ pgbadger_tar_file }}"
+        mode: '0644'
+      register: tar_copy
+      tags: copy_tar
+
+    - name: Ensure pgBadger extraction directory exists
+      ansible.builtin.file:
+        path: "{{ pgbadger_extract_dir }}"
+        state: directory
+        owner: "{{ postgres_user }}"
+        group: "{{ postgres_group }}"
+        mode: '0700'
+      loop:
+        - "{{ pgbadger_extract_dir }}"
+
+    - name: Extract pgBadger tar file
+      ansible.builtin.unarchive:
+        src: "/tmp/{{ pgbadger_tar_file }}"
+        dest: "{{ pgbadger_extract_dir }}"
+        remote_src: yes
+        owner: "{{ postgres_user }}"
+        group: "{{ postgres_group }}"
+        creates: "{{ pgbadger_extract_dir }}/pgbadger-{{ pgbadger_version }}"
+      tags: extract_tar
+
+    - name: Install pgBadger using make and make install
+      ansible.builtin.shell:
+        chdir: "{{ pgbadger_extract_dir }}/pgbadger-{{ pgbadger_version }}"
+        cmd: make && make install
+      args:
+        creates: "/usr/local/bin/pgbadger"
+      become: yes
+
+    - name: Verify pgBadger installation
+      ansible.builtin.shell:
+        cmd: pgbadger -V
+      register: pgbadger_version_output
+      changed_when: false
+
+    - name: Add pgBadger to system PATH
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^PATH='
+        line: "PATH=\"/usr/local/bin:$PATH\""
+        state: present
+      notify: Reload environment
+
+    - name: Clean up temporary tar file
+      ansible.builtin.file:
+        path: "/tmp/{{ pgbadger_tar_file }}"
+        state: absent
+
+    - name: Configure PostgreSQL parameters for pgBadger
+      ansible.builtin.lineinfile:
+        path: "{{ pg_data_dir }}/postgresql.conf"
+        regexp: "^{{ item.key }}\\s*="
+        line: "{{ item.key }} = {{ item.value | quote }}"
+        state: present
+      loop: "{{ pgbadger_postgres_params | dict2items }}"
+      notify: Restart PostgreSQL
+
+  handlers:
+    - name: Reload environment
+      ansible.builtin.shell:
+        cmd: source /etc/environment
+        executable: /bin/bash
+
+    - name: Restart PostgreSQL
+      ansible.builtin.service:
+        name: "postgresql-{{ postgres_version }}:{{ postgres_port }}"
+        state: restarted
